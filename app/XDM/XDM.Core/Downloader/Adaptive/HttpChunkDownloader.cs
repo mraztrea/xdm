@@ -55,17 +55,18 @@ namespace XDM.Core.Downloader.Adaptive
         {
             var targetStream = new FileStream(_chunkStreamMap.GetStream(_chunk.Id),
                 FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-            //if (_chunk.Size > 0)
-            //{
-            //    targetStream.Seek(_chunk.Offset + _chunk.Downloaded, SeekOrigin.Begin);
-            //}
-            //else
-            //{
-            //    targetStream.Seek(0, SeekOrigin.Begin);
-            //}
 
             //since we store each segments in separate file irrespective of byte ranged or not, no need to care about offset
-            targetStream.Seek(_chunk.Downloaded, SeekOrigin.Begin);
+
+            //The file on disk is authoritative: after a crash/SIGKILL the recorded offset can be ahead
+            //of the flushed bytes (which would leave a zero filled hole in the final file) or behind
+            //them (which would duplicate a tail), so the file is cut back to min(recorded, length) and
+            //the download continues from there. That is also why the persisted count does not need a
+            //flush after every write.
+            var end = Math.Min(_chunk.Downloaded, targetStream.Length);
+            targetStream.SetLength(end);
+            targetStream.Seek(end, SeekOrigin.Begin);
+            _chunk.Downloaded = end;
             return targetStream;
         }
 
@@ -149,6 +150,15 @@ namespace XDM.Core.Downloader.Adaptive
                             _cancellationToken.ThrowIfCancellationRequested();
                             if (x == 0)
                             {
+                                //a byte ranged chunk that ends short of its declared length is a truncated
+                                //response, not a finished segment: fail it as transient so the retry loop
+                                //re-requests the missing bytes instead of concatenating a corrupt segment
+                                if (_chunk.Size > 0 && _chunk.Downloaded < _chunk.Size)
+                                {
+                                    Log.Debug("Short chunk " + _chunk.Downloaded + "/" + _chunk.Size);
+                                    throw new Exception("Chunk is shorter than its declared size");
+                                }
+                                targetStream.Flush();
                                 _chunk.ChunkState = ChunkState.Finished;
                                 return;
                             }

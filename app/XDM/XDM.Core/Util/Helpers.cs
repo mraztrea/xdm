@@ -220,6 +220,10 @@ namespace XDM.Core.Util
                     return TextResource.GetText("STAT_FINISHED");
                 case DownloadStatus.Waiting:
                     return TextResource.GetText("STAT_WAITING");
+                case DownloadStatus.Assembling:
+                    return TextResource.GetText("STAT_ASSEMBLING");
+                case DownloadStatus.Merging:
+                    return TextResource.GetText("STAT_MERGING");
                 default:
                     return status.ToString();
             }

@@ -63,6 +63,6 @@ namespace XDM.Core
 
     public enum DownloadStatus
     {
-        Downloading, Stopped, Finished, Waiting
+        Downloading, Stopped, Finished, Waiting, Assembling, Merging
     }
 }

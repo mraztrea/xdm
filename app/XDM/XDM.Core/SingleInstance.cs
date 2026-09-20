@@ -25,37 +25,49 @@ namespace XDM.Core
                 Log.Debug(ex, "Exception in NativeMessagingHostHandler ctor");
                 if (ex is InstanceAlreadyRunningException)
                 {
-                    SendArgsToRunningInstance();
-                    Environment.Exit(0);
+                    //exit successfully only when the running instance actually accepted our arguments,
+                    //otherwise let the caller fall back to a normal launch
+                    Environment.Exit(SendArgsToRunningInstance() ? 0 : 1);
                 }
             }
             GlobalMutex = new Mutex(true, @"Global\XDM_Active_Instance");
         }
 
-        private static void SendArgsToRunningInstance()
+        private static bool SendArgsToRunningInstance()
         {
-            try
+            var args = Environment.GetCommandLineArgs().Skip(1);
+            var postData = JsonConvert.SerializeObject(args.Count() == 0 ? new string[] { "--restore-window" } : args);
+            var data = Encoding.UTF8.GetBytes(postData);
+
+            //the listener is started asynchronously, so a handoff during the first instance's startup
+            //is refused at first: retry over ~1.5 s before giving up
+            for (var attempt = 0; attempt < 8; attempt++)
             {
-                Log.Debug("Sending to running instance...");
-                var args = Environment.GetCommandLineArgs().Skip(1);
-                var request = WebRequest.Create("http://127.0.0.1:8597/args");
-                var postData = JsonConvert.SerializeObject(args.Count() == 0 ? new string[] { "--restore-window" } : args);
-                Log.Debug("Sending...");
-                var data = Encoding.UTF8.GetBytes(postData);
-                request.Method = "POST";
-                request.ContentType = "application/json";
-                request.ContentLength = data.Length;
-                using (var stream = request.GetRequestStream())
+                try
                 {
-                    stream.Write(data, 0, data.Length);
+                    Log.Debug("Sending to running instance...");
+                    var request = WebRequest.Create("http://127.0.0.1:8597/args");
+                    request.Method = "POST";
+                    request.ContentType = "application/json";
+                    request.ContentLength = data.Length;
+                    request.Timeout = 1000;
+                    using (var stream = request.GetRequestStream())
+                    {
+                        stream.Write(data, 0, data.Length);
+                    }
+                    using (var response = request.GetResponse())
+                    {
+                        Log.Debug("Sent...");
+                        return true;
+                    }
                 }
-                var response = request.GetResponse();
-                Log.Debug("Sent...");
+                catch (Exception ex)
+                {
+                    Log.Debug(ex, "Failed sending args to running instance");
+                    Thread.Sleep(200);
+                }
             }
-            catch (Exception ex)
-            {
-                Log.Debug(ex, "Failed sending args to running instance");
-            }
+            return false;
         }
     }
 

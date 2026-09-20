@@ -140,9 +140,16 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                          Log.Debug("Chunks found: " + pieces.Count);
                          if (this.AllFinished())
                          {
-                             this.AssemblePieces();
-                             Log.Debug("Download finished");
-                             base.OnFinished();
+                             this.OnProgressChanged(100);
+                             if (this.AssemblePieces())
+                             {
+                                 Log.Debug("Download finished");
+                                 base.OnFinished();
+                             }
+                             else
+                             {
+                                 OnAssembleAbandoned();
+                             }
                              return;
                          }
                          else
@@ -351,7 +358,7 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
             TicksAndSizeAtResume();
         }
 
-        protected override void AssemblePieces()
+        protected override bool AssemblePieces()
         {
             Log.Debug("Assembling..." + this.Id);
 
@@ -397,7 +404,11 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                         if (diff == 0) return 0;
                         return diff > 0 ? 1 : -1;
                     });
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
+
+                    //announce the phase at once, the copy publishes at most one sample per 400 ms
+                    this.OnAssembleProgressChanged(0, 0, DownloadPhase.Assembling);
+
                     var file1 = Path.Combine(this.state.TempDir, "1_" + this.Id);
                     var file2 = Path.Combine(this.state.TempDir, "2_" + this.Id);
                     using var outfs1 = new FileStream(file1, FileMode.Create, FileAccess.Write);
@@ -407,26 +418,34 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                     var plist1 = pieces.Where(pc => pc.StreamType == StreamType.Primary).ToList();
                     var plist2 = pieces.Where(pc => pc.StreamType == StreamType.Secondary).ToList();
 
-                    AssemblePieces(plist1, outfs1, ref buf, ref totalBytes);
-                    AssemblePieces(plist2, outfs2, ref buf, ref totalBytes);
+                    //the concat of both streams is the first half of the assemble (0..50), so the
+                    //denominator spans the pieces of both passes and not just the current one
+                    var allStreamSize = pieces.Sum(pc => pc.Length > 0 ? pc.Length : 0);
+
+                    AssemblePieces(plist1, outfs1, ref buf, ref totalBytes, allStreamSize);
+                    AssemblePieces(plist2, outfs2, ref buf, ref totalBytes, allStreamSize);
 
                     outfs1.Close();
                     outfs2.Close();
 
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
 
                     if (mediaProcessor != null)
                     {
                         mediaProcessor.ProgressChanged += (s, e) =>
                         {
-                            var basePrg = 60;
-                            var prg = basePrg + e.Progress / 3;
-                            if (prg > 100) prg = 100;
-                            this.OnAssembleProgressChanged(prg);
+                            //the merge is the second half of the assemble (50..99)
+                            var prg = 50 + e.Progress / 2;
+                            if (prg > 99) prg = 99;
+                            this.OnAssembleProgressChanged(prg, totalBytes, DownloadPhase.Merging);
                         };
                         var res = mediaProcessor.MergeAudioVideStream(file1, file2, TargetFile,
                             this.cancelFlag, out totalBytes);
-                        if (this.cancelFlag.IsCancellationRequested) return;
+                        if (res == MediaProcessingResult.Cancelled)
+                        {
+                            return false;
+                        }
+                        if (this.cancelFlag.IsCancellationRequested) return false;
                         if (res != MediaProcessingResult.Success)
                         {
                             throw new AssembleFailedException(
@@ -449,15 +468,16 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                         throw new AssembleFailedException(ErrorCode.Generic); //TODO: Add more info about error
                     }
 
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
 
                     if (this.totalSize < 1)
                     {
                         this.totalSize = totalBytes;
                     }
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
                     Log.Debug("Deleting file parts");
                     DeleteFileParts();
+                    return true;
                 }
                 catch (Exception ex)
                 {
@@ -478,17 +498,11 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
             }
         }
 
-        private void AssemblePieces(IList<Piece> pieces, FileStream outfs, ref byte[] buf, ref long totalBytes)
+        private void AssemblePieces(IList<Piece> pieces, FileStream outfs, ref byte[] buf, ref long totalBytes,
+            long allStreamSize)
         {
             var bytes = 0L;
-            var streamSize = 0L;
-            if (this.FileSize > 0)
-            {
-                foreach (var pc in pieces)
-                {
-                    streamSize += pc.Length;
-                }
-            }
+            var lastTick = 0L;
             foreach (var pc in pieces)
             {
                 if (this.cancelFlag.IsCancellationRequested) return;
@@ -513,6 +527,13 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                         }
                         totalBytes += x;
                         bytes += x;
+                        //the total size is unknown so the bar cannot move; the byte counter is real
+                        var tick = Helpers.TickCount();
+                        if (tick - lastTick > 400)
+                        {
+                            lastTick = tick;
+                            this.OnAssembleProgressChanged(0, totalBytes, DownloadPhase.Assembling);
+                        }
                     }
                 }
                 else
@@ -537,11 +558,11 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                         len -= x;
                         totalBytes += x;
                         bytes += x;
-                        if (streamSize > 0)
+                        if (allStreamSize > 0)
                         {
-                            var progress = (int)Math.Ceiling(totalBytes * 100 / (double)streamSize * 3);
-                            if (progress > 100) progress = 100;
-                            this.OnAssembleProgressChanged(progress);
+                            var progress = (int)Math.Min(50L, totalBytes * 50 / allStreamSize);
+                            if (progress < 0) progress = 0;
+                            this.OnAssembleProgressChanged(progress, totalBytes, DownloadPhase.Assembling);
                         }
                     }
                 }

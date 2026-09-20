@@ -65,6 +65,7 @@ namespace XDM.Core.Downloader.Adaptive
         protected long lastDownloaded = 0;
         protected long ticksAtDownloadStartOrResume = 0L;
         private bool stopRequested = false;
+        private int cancelledReported;
 
         public MultiSourceDownloaderBase(MultiSourceDownloadInfo info,
             IHttpClient? http = null,
@@ -160,6 +161,8 @@ namespace XDM.Core.Downloader.Adaptive
             {
                 Log.Debug(ex, "Error while disposing http client");
             }
+            //a stop during the assemble must not leave the row stuck in the Assemble phase
+            OnCancelled();
         }
 
         public virtual void Resume()
@@ -185,7 +188,11 @@ namespace XDM.Core.Downloader.Adaptive
 
                     this._cancellationTokenSource.ThrowIfCancellationRequested();
 
-                    Assemble();
+                    if (!Assemble())
+                    {
+                        OnAssembleAbandoned();
+                        return;
+                    }
                     OnComplete();
                 }
                 catch (OperationCanceledException ex)
@@ -264,7 +271,11 @@ namespace XDM.Core.Downloader.Adaptive
                     throw new OperationCanceledException();
                 }
 
-                Assemble();
+                if (!Assemble())
+                {
+                    OnAssembleAbandoned();
+                    return;
+                }
                 OnComplete();
             }
             catch (OperationCanceledException ex)
@@ -297,6 +308,14 @@ namespace XDM.Core.Downloader.Adaptive
         {
             var probeEventHandler = Probed;
             probeEventHandler?.Invoke(this, EventArgs.Empty);
+        }
+
+        protected virtual void OnAssembleProgressChanged(int progress, long downloaded, DownloadPhase phase)
+        {
+            this.progressResult.Progress = progress;
+            this.progressResult.Downloaded = downloaded;
+            this.progressResult.Phase = phase;
+            this.AssembingProgressChanged?.Invoke(this, progressResult);
         }
 
         private void DownloadChunkRange(int startIndex, int endIndex, CountdownLatch latch)
@@ -360,6 +379,11 @@ namespace XDM.Core.Downloader.Adaptive
 
             Log.Debug("Waiting for downloading all chunks");
             this.countdownLatch.Wait();
+            //the chunk based samples never reach 100 (the last chunk produces none): publish the final
+            //download phase sample so the user does not stare at a frozen 99% during the assemble
+            progressResult.Progress = 100;
+            progressResult.Downloaded = totalDownloadedBytes;
+            ProgressChanged?.Invoke(this, progressResult);
             SaveChunkState();
             _cancellationTokenSourceStateSaver.Cancel();
             Log.Debug("Countdown latch exited");
@@ -407,7 +431,8 @@ namespace XDM.Core.Downloader.Adaptive
                     lastProgress = progressResult.Progress;
                     if (prgDiff > 0)
                     {
-                        var eta = (ticksElapsed * (100 - progressResult.Progress) / 1000 * prgDiff);
+                        var eta = (long)Math.Max(0, ticksElapsed * (100 - progressResult.Progress)
+                            / (1000.0 * Math.Max(1, prgDiff)));
                         progressResult.Eta = eta;
                     }
                     var timeDiff = tick - ticksAtDownloadStartOrResume;
@@ -470,7 +495,7 @@ namespace XDM.Core.Downloader.Adaptive
         //    return files.Count;
         //}
 
-        private void ConcatSegments(IEnumerable<string> files, string target)
+        private void ConcatSegments(IEnumerable<MultiSourceChunk> chunks, string target, ref long copiedBytes, long totalBytes)
         {
 #if NET35
             var buf = new byte[5 * 1024 * 1024];
@@ -480,14 +505,19 @@ namespace XDM.Core.Downloader.Adaptive
 
             try
             {
-                var totalSize = 0L;
+                //0 so the first block always publishes: a short copy reports something immediately,
+                //afterwards the 400 ms throttle keeps a multi GB copy from flooding the UI
+                var lastTick = 0L;
                 using var fsout = new FileStream(target, FileMode.Create, FileAccess.ReadWrite);
-                foreach (string file in files)
+                foreach (var chunk in chunks)
                 {
-                    using var infs = new FileStream(file, FileMode.Open, FileAccess.Read);
+                    using var infs = new FileStream(_chunkStreamMap.GetStream(chunk.Id), FileMode.Open, FileAccess.Read);
+                    //a byte ranged segment knows its exact size: copy that many bytes and fail loudly on a
+                    //short read instead of concatenating whatever the file happens to hold
+                    var remaining = chunk.Size > 0 ? chunk.Size : -1L;
                     while (!this._cancellationTokenSource.IsCancellationRequested)
                     {
-                        var x = infs.Read(buf, 0, buf.Length);
+                        var x = infs.Read(buf, 0, remaining > 0 ? (int)Math.Min(buf.Length, remaining) : buf.Length);
                         if (x == 0)
                         {
                             break;
@@ -500,10 +530,33 @@ namespace XDM.Core.Downloader.Adaptive
                         {
                             throw new AssembleFailedException(ErrorCode.DiskError, ioe);
                         }
-                        totalSize += x;
+                        copiedBytes += x;
+                        if (remaining > 0)
+                        {
+                            remaining -= x;
+                        }
+                        //a multi GB copy must not push one UI update per 5 MB block; the check comes
+                        //before the end-of-segment break so a segment smaller than the copy buffer
+                        //still publishes its progress
+                        var tick = Helpers.TickCount();
+                        if (tick - lastTick > 400)
+                        {
+                            lastTick = tick;
+                            this.OnAssembleProgressChanged(
+                                totalBytes > 0 ? (int)Math.Min(99L, copiedBytes * 100 / totalBytes) : 0,
+                                copiedBytes, DownloadPhase.Assembling);
+                        }
+                        if (remaining == 0)
+                        {
+                            break;
+                        }
+                    }
+                    if (remaining > 0 && !this._cancellationTokenSource.IsCancellationRequested)
+                    {
+                        Log.Debug("EOF :: File corrupted :: " + chunk.Id);
+                        throw new AssembleFailedException(ErrorCode.Generic);
                     }
                 }
-                this._state.FileSize = totalSize;
             }
             finally
             {
@@ -513,10 +566,10 @@ namespace XDM.Core.Downloader.Adaptive
             }
         }
 
-        protected virtual void Assemble()
+        protected virtual bool Assemble()
         {
             SaveChunkState();
-            if (this._cancellationTokenSource.IsCancellationRequested) return;
+            if (this._cancellationTokenSource.IsCancellationRequested) return false;
             if (string.IsNullOrEmpty(this.TargetDir))
             {
                 this.TargetDir = FileHelper.GetDownloadFolderByFileName(this.TargetFileName);
@@ -532,12 +585,24 @@ namespace XDM.Core.Downloader.Adaptive
                 this.TargetFileName = FileHelper.GetUniqueFileName(this.TargetFileName, this.TargetDir);
             }
 
+            //switch the UI to the assemble phase right away instead of after the first throttled sample
+            this.OnAssembleProgressChanged(0, 0, DownloadPhase.Assembling);
+
+            var totalBytes = 0L;
+            foreach (var chunk in _chunks)
+            {
+                if (chunk.Size > 0) totalBytes += chunk.Size;
+            }
+            var copiedBytes = 0L;
+
             if (!_state.Demuxed)
             {
-                ConcatSegments(this._chunks.Select(c => this._chunkStreamMap.GetStream(c.Id)), TargetFile);
-                if (this._cancellationTokenSource.IsCancellationRequested) return;
+                ConcatSegments(this._chunks, TargetFile, ref copiedBytes, totalBytes);
+                if (this._cancellationTokenSource.IsCancellationRequested) return false;
+                this._state.FileSize = copiedBytes;
                 DeleteFileParts();
-                return;
+                this.OnAssembleProgressChanged(100, copiedBytes, DownloadPhase.Assembling);
+                return true;
             }
 
             if (mediaProcessor == null)
@@ -545,40 +610,43 @@ namespace XDM.Core.Downloader.Adaptive
                 throw new AssembleFailedException(ErrorCode.Generic); //TODO: Add more info about error
             }
 
-            mediaProcessor.ProgressChanged += (s, e) => this.AssembingProgressChanged.Invoke(this, e);
-
             var videoFile = Path.Combine(_state.TempDirectory, "1_" + TargetFileName + _state.VideoContainerFormat);
             var audioFile = Path.Combine(_state.TempDirectory, "2_" + TargetFileName + _state.AudioContainerFormat);
 
-            ConcatSegments(this._chunks.Where(c => c.StreamIndex == 0).Select(c => this._chunkStreamMap.GetStream(c.Id)),
-                            videoFile);
-            ConcatSegments(this._chunks.Where(c => c.StreamIndex == 1).Select(c => this._chunkStreamMap.GetStream(c.Id)),
-                audioFile);
-            if (this._cancellationTokenSource.IsCancellationRequested) return;
+            //the concatenated byte count covers both passes, so one continuous 0..100 covers them too
+            ConcatSegments(_chunks.Where(c => c.StreamIndex == 0), videoFile, ref copiedBytes, totalBytes);
+            ConcatSegments(_chunks.Where(c => c.StreamIndex == 1), audioFile, ref copiedBytes, totalBytes);
+            if (this._cancellationTokenSource.IsCancellationRequested) return false;
+
+            var mergeBytes = copiedBytes;
+            mediaProcessor.ProgressChanged += (s, e) =>
+                this.OnAssembleProgressChanged(e.Progress, mergeBytes, DownloadPhase.Merging);
 
             var res = mediaProcessor.MergeAudioVideStream(videoFile, audioFile, TargetFile,
                 this._cancellationTokenSource, out long totalSize);
-            if (this._cancellationTokenSource.IsCancellationRequested) return;
+            if (res == MediaProcessingResult.Cancelled || this._cancellationTokenSource.IsCancellationRequested) return false;
             if (res != MediaProcessingResult.Success)
             {
                 //try with matroska container
                 var name = Path.GetFileNameWithoutExtension(TargetFileName);
                 TargetFileName = name + ".mkv";
                 this.TargetFileName = FileHelper.GetUniqueFileName(this.TargetFileName, this.TargetDir);
-                if (mediaProcessor.MergeAudioVideStream(videoFile, audioFile, TargetFile,
-                this._cancellationTokenSource, out totalSize) != MediaProcessingResult.Success)
+                res = mediaProcessor.MergeAudioVideStream(videoFile, audioFile, TargetFile,
+                    this._cancellationTokenSource, out totalSize);
+                if (res == MediaProcessingResult.Cancelled || this._cancellationTokenSource.IsCancellationRequested) return false;
+                if (res != MediaProcessingResult.Success)
                 {
-                    //try with matroska container
                     throw new AssembleFailedException(
                         res == MediaProcessingResult.AppNotFound ? ErrorCode.FFmpegNotFound :
                                 ErrorCode.FFmpegError); //TODO: Add more info about error
                 }
             }
 
-            if (this._cancellationTokenSource.IsCancellationRequested) return;
             DeleteFileParts();
 
             this._state.FileSize = totalSize;
+            this.OnAssembleProgressChanged(100, totalSize, DownloadPhase.Merging);
+            return true;
         }
 
         private void DeleteFileParts()
@@ -678,8 +746,33 @@ namespace XDM.Core.Downloader.Adaptive
 
         protected void OnCancelled()
         {
+            //Stop() may report the cancellation before the download thread notices it; the UI must
+            //see a single Cancelled event
+            if (Interlocked.Exchange(ref cancelledReported, 1) != 0) return;
             Cancelled?.Invoke(this, EventArgs.Empty);
             Cleanup();
+        }
+
+        /// <summary>
+        /// The assemble was abandoned (cancelled or the merge failed). The target file holds a
+        /// truncated download at this point, so it is deleted; the segment files are kept so the
+        /// download stays resumable.
+        /// </summary>
+        private void OnAssembleAbandoned()
+        {
+            try
+            {
+                var file = TargetFile;
+                if (file != null && File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Failed to delete partial target file");
+            }
+            OnCancelled();
         }
 
         private void Cleanup()

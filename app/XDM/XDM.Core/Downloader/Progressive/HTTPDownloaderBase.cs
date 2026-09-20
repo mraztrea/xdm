@@ -39,6 +39,7 @@ namespace XDM.Core.Downloader.Progressive
         protected ReaderWriterLockSlim rwLock = new(LockRecursionPolicy.SupportsRecursion);
         public ReaderWriterLockSlim Lock => this.rwLock;
         private bool stopRequested = false;
+        private int cancelledReported;
 
         public FileNameFetchMode FileNameFetchMode
         {
@@ -93,7 +94,7 @@ namespace XDM.Core.Downloader.Progressive
 
         protected abstract BaseHTTPDownloaderState GetState();
 
-        protected abstract void AssemblePieces();
+        protected abstract bool AssemblePieces();
 
         public abstract bool IsFirstRequest(StreamType streamType);
 
@@ -253,8 +254,17 @@ namespace XDM.Core.Downloader.Progressive
                 if (this.AllFinished())
                 {
                     SaveChunkState();
-                    this.AssemblePieces();
-                    OnFinished();
+                    //the download is over: publish the final sample before the assemble starts,
+                    //otherwise the UI keeps showing the last chunk based sample (97-99%)
+                    this.OnProgressChanged(100);
+                    if (this.AssemblePieces())
+                    {
+                        OnFinished();
+                    }
+                    else
+                    {
+                        OnAssembleAbandoned();
+                    }
                     return;
                 }
             }
@@ -484,6 +494,9 @@ namespace XDM.Core.Downloader.Progressive
 
         protected virtual void OnCancelled()
         {
+            //Stop() may report the cancellation before the download thread notices it; the UI must
+            //see a single Cancelled event
+            if (Interlocked.Exchange(ref cancelledReported, 1) != 0) return;
             this.Cancelled?.Invoke(this, EventArgs.Empty);
             Cleanup();
         }
@@ -506,10 +519,34 @@ namespace XDM.Core.Downloader.Progressive
             Cleanup();
         }
 
-        protected virtual void OnAssembleProgressChanged(int progress)
+        protected virtual void OnAssembleProgressChanged(int progress, long downloaded, DownloadPhase phase)
         {
             this.progressResult.Progress = progress;
+            this.progressResult.Downloaded = downloaded;
+            this.progressResult.Phase = phase;
             this.AssembingProgressChanged?.Invoke(this, progressResult);
+        }
+
+        /// <summary>
+        /// The assemble was abandoned (cancelled or the merge failed). The target file holds a
+        /// truncated download at this point, so it is deleted; the piece files are kept so the
+        /// download stays resumable.
+        /// </summary>
+        protected virtual void OnAssembleAbandoned()
+        {
+            try
+            {
+                var file = this.TargetFile;
+                if (file != null && File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Failed to delete partial target file");
+            }
+            OnCancelled();
         }
 
         protected virtual void TicksAndSizeAtResume()

@@ -13,9 +13,10 @@ namespace XDM.Core.MediaProcessor
         
         public virtual event EventHandler<ProgressResultEventArgs> ProgressChanged;
 
-        protected void UpdateProgress(int progress)
+        protected void UpdateProgress(int progress, DownloadPhase phase = DownloadPhase.Merging)
         {
             progressResult.Progress = progress;
+            progressResult.Phase = phase;
             ProgressChanged?.Invoke(this, progressResult);
         }
     }
@@ -24,6 +25,7 @@ namespace XDM.Core.MediaProcessor
     {
         Success,
         AppNotFound,
-        Failed
+        Failed,
+        Cancelled
     }
 }

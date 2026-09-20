@@ -123,9 +123,16 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                         Log.Debug("Chunks found: " + pieces.Count);
                         if (this.AllFinished())
                         {
-                            this.AssemblePieces();
-                            Console.WriteLine("Download finished");
-                            base.OnFinished();
+                            this.OnProgressChanged(100);
+                            if (this.AssemblePieces())
+                            {
+                                Console.WriteLine("Download finished");
+                                base.OnFinished();
+                            }
+                            else
+                            {
+                                OnAssembleAbandoned();
+                            }
                             return;
                         }
                         else
@@ -327,7 +334,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
             return pieces;
         }
 
-        protected override void AssemblePieces()
+        protected override bool AssemblePieces()
         {
             Log.Debug("Assembling...");
             try
@@ -336,9 +343,13 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                 try
                 {
                     var pieces = SortAndValidatePieces();
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
+
+                    //announce the phase at once, the copy publishes at most one sample per 400 ms
+                    this.OnAssembleProgressChanged(0, 0, DownloadPhase.Assembling);
 
                     var totalBytes = 0L;
+                    var lastTick = 0L;
 
 #if NET35
                     var buf = new byte[5 * 1024 * 1024];
@@ -354,7 +365,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                     {
                         foreach (var pc in pieces)
                         {
-                            if (this.cancelFlag.IsCancellationRequested) return;
+                            if (this.cancelFlag.IsCancellationRequested) return false;
                             using var infs = new FileStream(GetPieceFile(pc.Id), FileMode.Open, FileAccess.Read);
                             var len = pc.Length;
                             if (this.FileSize < 1)
@@ -376,13 +387,20 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                                         throw new AssembleFailedException(ErrorCode.DiskError, ioe);
                                     }
                                     totalBytes += x;
+                                    //the total size is unknown so the bar cannot move; the byte counter is real
+                                    var tick = Helpers.TickCount();
+                                    if (tick - lastTick > 400)
+                                    {
+                                        lastTick = tick;
+                                        this.OnAssembleProgressChanged(0, totalBytes, DownloadPhase.Assembling);
+                                    }
                                 }
                             }
                             else
                             {
                                 while (len > 0)
                                 {
-                                    if (this.cancelFlag.IsCancellationRequested) return;
+                                    if (this.cancelFlag.IsCancellationRequested) return false;
                                     var x = infs.Read(buf, 0, (int)Math.Min(buf.Length, len));
                                     if (x == 0)
                                     {
@@ -402,12 +420,13 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                                     totalBytes += x;
                                     var prg = (int)(totalBytes * 100 / FileSize);
                                     if (state!.ConvertToMp3) prg /= 2;
-                                    this.OnAssembleProgressChanged(prg);
+                                    if (prg > 100) prg = 100;
+                                    this.OnAssembleProgressChanged(prg, totalBytes, DownloadPhase.Assembling);
                                 }
                             }
                         }
 
-                        if (this.cancelFlag.IsCancellationRequested) return;
+                        if (this.cancelFlag.IsCancellationRequested) return false;
 
                         if (state!.ConvertToMp3)
                         {
@@ -417,10 +436,14 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                                 {
                                     var prg = 50 + e.Progress / 2;
                                     if (prg > 100) prg = 100;
-                                    this.OnAssembleProgressChanged(prg);
+                                    this.OnAssembleProgressChanged(prg, totalBytes, DownloadPhase.Merging);
                                 };
                                 var res = mediaProcessor.ConvertToMp3Audio(outFile!, TargetFile!,
                                     this.cancelFlag, out totalBytes);
+                                if (res == MediaProcessingResult.Cancelled)
+                                {
+                                    return false;
+                                }
                                 if (res != MediaProcessingResult.Success)
                                 {
                                     throw new AssembleFailedException(
@@ -451,7 +474,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
 #endif
                     }
 
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
 
                     //Console.WriteLine("Total bytes written: {0} total size: {1}", totalBytes, this.totalSize);
                     if (this.totalSize < 1)
@@ -466,9 +489,10 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                         }
                         catch { }
                     }
-                    if (this.cancelFlag.IsCancellationRequested) return;
+                    if (this.cancelFlag.IsCancellationRequested) return false;
                     Log.Debug("Deleting file parts");
                     DeleteFileParts();
+                    return true;
                 }
                 catch (Exception ex)
                 {

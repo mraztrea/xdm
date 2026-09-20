@@ -260,3 +260,5 @@ MSG_EXT_PIN=Please pin the extension in browser toolbar for a better user experi
 MSG_EXT_INSTALL_FAIL=The extension was not installed successfully, please click on the Help button to find out how to fix it
 MSG_COPY=Copy
 MSG_QUIT_ACTIVE_DOWNLOADS=Downloads are in progress. Exit XDM and stop them?
+STAT_MERGING=Merging audio and video
+MSG_NOT_AVAILABLE=--

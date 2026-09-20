@@ -112,6 +112,12 @@ namespace XDM.GtkUI
             // here, after Configure() has applied the single-instance check and the language is loaded.
             var trayIcon = Utils.Tray.TrayIcon.Attach(win, app, core);
 
+            // Publish WindowCreated exactly once. The GTK window never raised it, so the clipboard
+            // monitor (Application.cs subscribes WindowLoaded to this event) stayed dead on Linux.
+            // It cannot be raised from the MainWindow constructor: the subscription only exists after
+            // Configure() has raised ApplicationContext.Initialized, which is the line above.
+            win.NotifyWindowCreated();
+
             Log.Debug("Processing arguments...");
 
             ArgsProcessor.Process(args);

@@ -924,6 +924,16 @@ namespace XDM.GtkUI
             //        AppDomain.CurrentDomain.BaseDirectory, "svg-icons", $"{name}.svg"), dimension, dimension, true);
         }
 
+        /// <summary>
+        /// Publishes <see cref="WindowCreated"/> once the window and the application context are
+        /// ready. Called from Program.Main right after ApplicationContext.Configure(), because the
+        /// event handlers (clipboard monitor startup) are only wired up by that call.
+        /// </summary>
+        public void NotifyWindowCreated()
+        {
+            WindowCreated?.Invoke(this, EventArgs.Empty);
+        }
+
         public IInProgressDownloadRow? FindInProgressItem(string id)
         {
             if (!inprogressDownloadsStore!.GetIterFirst(out TreeIter iter))

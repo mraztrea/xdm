@@ -401,13 +401,33 @@ namespace XDM.Core
             lock (this)
             {
                 var http = source as IBaseDownloader;
+                var status = args.Phase == DownloadPhase.Merging ? DownloadStatus.Merging : DownloadStatus.Assembling;
                 if (activeProgressWindows.ContainsKey(http.Id))
                 {
                     var prgWin = activeProgressWindows[http.Id];
                     prgWin.DownloadProgress = args.Progress;
-                    prgWin.FileSizeText = $"{TextResource.GetText("STAT_ASSEMBLING")} {FormattingHelper.FormatSize(args.Downloaded)} / {FormattingHelper.FormatSize(http.FileSize)}";
-                    prgWin.DownloadSpeedText = "---";
-                    prgWin.DownloadETAText = "---";
+                    prgWin.FileSizeText = $"{TextResource.GetText(status == DownloadStatus.Merging ? "STAT_MERGING" : "STAT_ASSEMBLING")} {FormattingHelper.FormatSize(args.Downloaded)} / {FormattingHelper.FormatSize(http.FileSize)}";
+                    prgWin.DownloadSpeedText = TextResource.GetText("MSG_NOT_AVAILABLE");
+                    prgWin.DownloadETAText = TextResource.GetText("MSG_NOT_AVAILABLE");
+                }
+
+                //The in-progress row is fed only by DownloadProgressChanged, which stops once the data
+                //phase is over, so the row would keep showing a stale speed/ETA next to a frozen bar.
+                //This is transient UI state: it is deliberately not routed through
+                //Application.UpdateProgress, which writes the database on every event and would
+                //overwrite the speed/ETA with zeros.
+                var win = ApplicationContext.MainWindow;
+                if (win != null)
+                {
+                    win.RunOnUIThread(() =>
+                    {
+                        var row = win.FindInProgressItem(http.Id);
+                        if (row != null)
+                        {
+                            row.Status = status;
+                            row.Progress = args.Progress;
+                        }
+                    });
                 }
             }
         }
@@ -619,7 +639,7 @@ namespace XDM.Core
                 download.Probed -= HandleProbeResult;
                 download.Finished -= DownloadFinished;
                 download.ProgressChanged -= DownloadProgressChanged;
-                download.AssembingProgressChanged += AssembleProgressChanged;
+                download.AssembingProgressChanged -= AssembleProgressChanged;
                 download.Cancelled -= DownloadCancelled;
                 download.Failed -= DownloadFailed;
             }
