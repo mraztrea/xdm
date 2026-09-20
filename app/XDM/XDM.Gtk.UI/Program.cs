@@ -108,6 +108,10 @@ namespace XDM.GtkUI
                 .RegisterPlatformUIService(new GtkPlatformUIService())
                 .Configure();
 
+            // The tray icon belongs to the running instance, not to the window: it is published once
+            // here, after Configure() has applied the single-instance check and the language is loaded.
+            var trayIcon = Utils.Tray.TrayIcon.Attach(win, app, core);
+
             Log.Debug("Processing arguments...");
 
             ArgsProcessor.Process(args);
@@ -115,6 +119,8 @@ namespace XDM.GtkUI
             Log.Debug("Gtk Run...");
 
             Gtk.Application.Run();
+
+            trayIcon.Dispose();
         }
 
         private static void ApplicationContext_FirstRunCallback(object? sender, EventArgs e)

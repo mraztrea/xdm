@@ -38,7 +38,6 @@ namespace XDM.GtkUI
         private bool isUpdateAvailable;
         private Image helpImage;
         private Label helpLabel;
-        private StatusIcon statusIcon;
 
         internal WindowGroup GetWindowGroup() => this.windowGroup;
 
@@ -128,14 +127,6 @@ namespace XDM.GtkUI
 
             clipboarMonitor = new PollingClipboardMonitor();
             clipboarMonitor.ClipboardChanged += (_, _) => this.ClipboardChanged?.Invoke(this, EventArgs.Empty);
-
-            statusIcon = new StatusIcon(GtkHelper.LoadSvg("xdm-logo", 128));
-            statusIcon.Activate += StatusIcon_Activate;
-        }
-
-        private void StatusIcon_Activate(object? sender, EventArgs e)
-        {
-            ShowAndActivate();
         }
 
         private void CreateMenu()

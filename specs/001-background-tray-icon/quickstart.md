@@ -67,8 +67,8 @@ gdbus call --session --dest "$SNI" --object-path /StatusNotifierItem \
 ### 3.3 The menu
 
 ```bash
-gdbus call --session --dest "$SNI" --object-path /MenuBar \
-  --method com.canonical.dbusmenu.GetLayout 0 -1 "[]"
+dbus-send --session --print-reply --dest="$SNI" /MenuBar \
+  com.canonical.dbusmenu.GetLayout int32:0 int32:-1 array:string:
 # expected: two items — 1 = the localised "Restore Window", 2 = the localised "Exit"
 ```
 
@@ -79,10 +79,14 @@ gdbus call --session --dest "$SNI" --object-path /MenuBar \
 gdbus call --session --dest "$SNI" --object-path /StatusNotifierItem \
   --method org.kde.StatusNotifierItem.Activate 0 0
 
-# same code path as choosing "Exit" in the menu (variant syntax varies by gdbus version;
-# the GUI right-click route is the primary way to check this)
-gdbus call --session --dest "$SNI" --object-path /MenuBar \
-  --method com.canonical.dbusmenu.Event 2 clicked "<@v></@v>" 0
+# same code path as choosing "Exit" in the menu
+dbus-send --session --print-reply --dest="$SNI" /MenuBar \
+  com.canonical.dbusmenu.Event int32:2 string:clicked variant:string:"" uint32:0
+
+# the published menu layout (note: use dbus-send — gdbus/busctl parse the "-1"
+# "all depths" argument as an option)
+dbus-send --session --print-reply --dest="$SNI" /MenuBar \
+  com.canonical.dbusmenu.GetLayout int32:0 int32:-1 array:string:
 ```
 
 ## 4. Validation scenarios
@@ -111,3 +115,26 @@ gdbus call --session --dest "$SNI" --object-path /MenuBar \
 | Two icons while a download is running | Both backends published (must never happen) | `busctl --user list` plus the panel; report as a defect against [data-model.md](./data-model.md) invariant I1 |
 | Icon present but a click opens the menu instead of the window | Host ignores `ItemIsMenu=false` | Expected on those hosts; "Restore Window" is the first menu entry (see [plan.md](./plan.md) risks) |
 | Click does nothing | Window already visible and focused | Focus another window first, then click |
+
+## 6. Running an instance without touching the installed XDM (used for the 2026-09-20 verification)
+
+XDM is single-instance (a named mutex), so a second copy normally hands its arguments to the running one and exits. To verify a build while the user keeps their own XDM and data:
+
+```bash
+# 1. stop the installed instance (it is started by systemd at logon)
+systemctl --user stop 'app-xdm\x2dapp@autostart.service'   # or the transient unit from systemctl --user list-units | grep xdm
+
+# 2. run the build under test with its own data directory
+HOME=/tmp/xdm-check/home XDG_CONFIG_HOME=/tmp/xdm-check/config XDM_DEBUG_MODE=1 \
+  dotnet app/XDM/XDM.Gtk.UI/bin/Release/net6.0/xdm-app.dll --background
+
+# 3. when finished, bring the installed XDM back
+systemctl --user start 'app-xdm\x2dapp@autostart.service'
+```
+
+With a private `HOME` the build writes its own `~/.xdm-app-data`, so the user's `settings.dat`, `downloads.db` and download state files are never touched. Logging needs `XDM_DEBUG_MODE=1` **and** a build where `TRACE` is defined (see [research.md](./research.md) D13).
+
+Expected results that depend on the compositor:
+
+- KDE Plasma (Wayland) honours `ItemIsMenu=false`: `Activate` restores and raises the window, but the compositor does not hand it keyboard focus for a tray-initiated request (no activation token).
+- GNOME Shell without the AppIndicator extension has no status-notifier host: expect the SC-006 path (log entry, no icon, process keeps running).

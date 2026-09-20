@@ -34,7 +34,7 @@ Two implementations:
 | Implementation | When used | Menu | Tooltip | Primary click |
 |----------------|-----------|------|---------|---------------|
 | `SniTrayIcon` (+`SniMenu`) | A status-notifier host is registered | DBusMenu at `/MenuBar` | SNI `ToolTip` | `Activate` → restore |
-| `LegacyStatusIconTray` | No SNI host; XEmbed tray may host `Gtk.StatusIcon` | `Gtk.Menu` with the same two items | `TooltipText` | `Activate` event → restore |
+| `LegacyStatusIconTray` | No SNI host; XEmbed tray may host `Gtk.StatusIcon` | `Gtk.Menu` with the same two items, shown from the icon's `popup-menu` signal | `TooltipText` | `Activate` event → restore |
 
 Exactly one backend is constructed per process (`TrayBackendKind`), so exactly one icon is published (FR-001).
 
@@ -42,8 +42,8 @@ Exactly one backend is constructed per process (`TrayBackendKind`), so exactly o
 
 | Type | API | Contract |
 |------|-----|----------|
-| `TrayIconPixmap` | `static TrayIconPixmap FromPixbuf(Gdk.Pixbuf pixbuf)` | Convert to ARGB32 bytes in network byte order; `Argb32.Length == Width * Height * 4`; add an opaque alpha channel when the source has none. Throws `ArgumentException` when the buffer cannot be interpreted — the caller treats that as an attach failure |
-| `TrayMenuLayout` | `static SniMenuLayout Build(uint revision, string restoreLabel, string exitLabel)` | Item ids `1` (restore) and `2` (exit) in that order, root id `0`, labels non-empty; invoked once per session, so `revision` is constant |
+| `TrayIconPixmap` | `static TrayIconPixmap FromRgba(byte[] pixels, int width, int height, int rowStride, bool hasAlpha)` (pure) and `static TrayIconPixmap FromPixbuf(Gdk.Pixbuf pixbuf)` (wrapper) | Convert to ARGB32 bytes in network byte order; `Argb32.Length == Width * Height * 4`; add an opaque alpha channel when the source has none; honour `rowStride` padding; throw `ArgumentException` when the buffer cannot be interpreted — the caller treats that as an attach failure |
+| `TrayMenuLayout` | `static SniMenuLayout Build(uint revision, string restoreLabel, string exitLabel)` | Item ids `1` (restore) and `2` (exit) in that order, root id `0`; invoked once per session, so `revision` is constant. An empty label (a language file without the key) is replaced by the English text, so no menu entry can be blank |
 
 ## 4. Exit flow (single implementation, tray-initiated only)
 

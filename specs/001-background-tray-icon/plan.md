@@ -104,6 +104,9 @@ app/XDM/
 | ARGB32 byte order wrong → invisible or garbled icon | Icon looks broken | Unit test asserts exact bytes for a known pixbuf in `TrayIconTests` |
 | Both backends showing an icon at once | Violates FR-001/SC-004 | One `TrayBackendKind` decided once at startup; SC-004 launch-repetition check in quickstart |
 | No CI coverage for the GTK project | Regressions escape CI | Plan requires local build + quickstart evidence; CI file left unchanged |
+| **Observed** — the GTK build had logging compiled out (`DefineConstants` dropped `TRACE`), so FR-010's "record the failure" could not work | Tray failures were invisible | Fixed in this change: `<DefineConstants>LINUX;TRACE</DefineConstants>` in `XDM.Gtk.UI.csproj` (see research D13) |
+| **Observed** — `MessageWriter` is a `ref struct`; passing it by value produced a malformed reply and the daemon dropped the connection | Icon would disappear on the first host call | All reply helpers take `ref MessageWriter` (see research D13); handlers also catch exceptions so a bad call can no longer take the connection down |
+| **Observed** — KDE Wayland does not grant keyboard focus to a tray-initiated activation | SC-002's "focused" half is compositor-dependent | Window is restored and raised as required; documented in tasks.md "Known limitation" and quickstart §6; verify focus on X11 |
 
 ## Complexity Tracking
 

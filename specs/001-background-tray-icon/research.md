@@ -158,3 +158,18 @@ All `NEEDS CLARIFICATION` items from Technical Context are resolved below. Every
 | Verification | NUnit for pure helpers + desktop quickstart (D12) |
 
 No `[NEEDS CLARIFICATION]` markers remain in the plan.
+
+---
+
+## D13 — Findings from implementation and live verification (2026-09-20)
+
+Recorded because each of these would otherwise be re-discovered the hard way (details and evidence in [tasks.md](./tasks.md) → "Verification results").
+
+| Finding | Detail | Consequence |
+|---|---|---|
+| The Linux build never logged | `XDM.Gtk.UI.csproj` overrode the SDK's constants with `<DefineConstants>LINUX</DefineConstants>`, dropping `TRACE`; `Log.Debug` is `[Conditional("TRACE")]`, so all logging was compiled out and `~/.xdm-app-data/log.txt` was never written | FR-010 ("record the failure in the application log") was unsatisfiable until `LINUX;TRACE` was set, mirroring `XDM.Wpf.UI.csproj` (`TRACE;WINDOWS`) |
+| `MessageWriter` must be passed by `ref` | It is a `ref struct` carrying the write position; passing it by value to a helper leaves the caller's position stale and the reply body is rejected by the daemon (`dbus-broker: Peer … is being disconnected as it sent a message with an invalid body`), which drops the whole connection | All reply helpers take `ref MessageWriter`; the constraint is documented at the top of `SniTrayIcon.cs` and `SniMenu.cs` |
+| Host behaviour on primary click | On KDE Plasma the host honours `ItemIsMenu=false` and calls `Activate`, so the window is restored from the tray | FR-003's restore works as specified; the "Restore Window" menu entry remains the fallback for hosts that open the menu instead |
+| Wayland focus policy | `ShowAndActivate()` restores and raises the window, but the compositor did not grant keyboard focus for a tray-initiated request (no activation token available) | FR-003/SC-002 are satisfied for "shown/restored"; the focus half depends on compositor policy and should be verified on X11 when possible |
+| Trimming is safe | The published trimmed build (`PublishTrimmed`, `TrimMode=Link`) registers the item, answers `Properties.GetAll` and serves the DBusMenu unchanged | No `TrimmerRootAssembly`/`DynamicDependency` needed for the tray code |
+| `-1` arguments in CLI tools | `gdbus call`/`busctl call` parse `-1` (the "all depths" argument of `GetLayout`) as an option | Use `dbus-send … int32:-1` when checking the menu layout by hand (noted in [quickstart.md](./quickstart.md)) |
