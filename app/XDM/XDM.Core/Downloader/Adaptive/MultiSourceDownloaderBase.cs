@@ -193,14 +193,18 @@ namespace XDM.Core.Downloader.Adaptive
                     Log.Debug(ex, ex.Message);
                     if (this._cancelRequestor.Error != ErrorCode.None)
                     {
-                        OnFailed(new DownloadFailedEventArgs(this._cancelRequestor.Error));
+                        OnFailed(new DownloadFailedEventArgs(this._cancelRequestor.Error,
+                            this._cancelRequestor.ErrorDetail));
                     }
-                    OnCancelled();
+                    else
+                    {
+                        OnCancelled();
+                    }
                 }
                 catch (FileNotFoundException ex)
                 {
                     Log.Debug(ex, ex.Message);
-                    OnFailed(new DownloadFailedEventArgs(ErrorCode.FFmpegNotFound));
+                    OnFailed(new DownloadFailedEventArgs(ErrorCode.FFmpegNotFound, ex.Message));
                 }
                 //catch (HttpException ex)
                 //{
@@ -212,12 +216,13 @@ namespace XDM.Core.Downloader.Adaptive
                     Log.Debug(ex, ex.Message);
                     if (ex.InnerException is HttpException he)
                     {
-                        OnFailed(new DownloadFailedEventArgs(ErrorCode.InvalidResponse));
+                        OnFailed(new DownloadFailedEventArgs(ErrorCode.InvalidResponse, he.Message));
                     }
                     else
                     {
-                        OnFailed(new DownloadFailedEventArgs(
-                            ex is DownloadException de ? de.ErrorCode : ErrorCode.Generic));
+                        OnFailed(ex is DownloadException de ?
+                            new DownloadFailedEventArgs(de.ErrorCode, de.Message) :
+                            new DownloadFailedEventArgs(ErrorCode.Generic, ex.Message));
                     }
                 }
             }).Start();
@@ -269,8 +274,16 @@ namespace XDM.Core.Downloader.Adaptive
             }
             catch (OperationCanceledException ex)
             {
-                Console.WriteLine(ex);
-                OnCancelled();
+                Log.Debug(ex, ex.Message);
+                if (this._cancelRequestor.Error != ErrorCode.None)
+                {
+                    OnFailed(new DownloadFailedEventArgs(this._cancelRequestor.Error,
+                        this._cancelRequestor.ErrorDetail));
+                }
+                else
+                {
+                    OnCancelled();
+                }
             }
             //catch (HttpException ex)
             //{
@@ -279,16 +292,16 @@ namespace XDM.Core.Downloader.Adaptive
             //}
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
-                if (ex.InnerException is HttpException)
+                Log.Debug(ex, ex.Message);
+                if (ex.InnerException is HttpException he)
                 {
-                    var he = ex.InnerException as HttpException;
-                    OnFailed(new DownloadFailedEventArgs(ErrorCode.InvalidResponse));
+                    OnFailed(new DownloadFailedEventArgs(ErrorCode.InvalidResponse, he.Message));
                 }
                 else
                 {
-                    OnFailed(new DownloadFailedEventArgs(
-                        ex is DownloadException de ? de.ErrorCode : ErrorCode.Generic));
+                    OnFailed(ex is DownloadException de ?
+                        new DownloadFailedEventArgs(de.ErrorCode, de.Message) :
+                        new DownloadFailedEventArgs(ErrorCode.Generic, ex.Message));
                 }
             }
         }
@@ -481,7 +494,7 @@ namespace XDM.Core.Downloader.Adaptive
             try
             {
                 var totalSize = 0L;
-                using var fsout = new FileStream(target, FileMode.Create, FileAccess.ReadWrite);
+                using var fsout = FileHelper.CreateTargetFile(target);
                 foreach (string file in files)
                 {
                     using var infs = new FileStream(file, FileMode.Open, FileAccess.Read);
@@ -498,7 +511,7 @@ namespace XDM.Core.Downloader.Adaptive
                         }
                         catch (IOException ioe)
                         {
-                            throw new AssembleFailedException(ErrorCode.DiskError, ioe);
+                            throw new AssembleFailedException(ErrorCode.TargetFileWriteFailed, ioe);
                         }
                         totalSize += x;
                     }
@@ -542,7 +555,7 @@ namespace XDM.Core.Downloader.Adaptive
 
             if (mediaProcessor == null)
             {
-                throw new AssembleFailedException(ErrorCode.Generic); //TODO: Add more info about error
+                throw new AssembleFailedException(ErrorCode.Generic, "Media processor is not available");
             }
 
             mediaProcessor.ProgressChanged += (s, e) => this.AssembingProgressChanged.Invoke(this, e);
@@ -571,7 +584,7 @@ namespace XDM.Core.Downloader.Adaptive
                     //try with matroska container
                     throw new AssembleFailedException(
                         res == MediaProcessingResult.AppNotFound ? ErrorCode.FFmpegNotFound :
-                                ErrorCode.FFmpegError); //TODO: Add more info about error
+                                ErrorCode.FFmpegError, mediaProcessor.LastError);
                 }
             }
 
@@ -667,7 +680,7 @@ namespace XDM.Core.Downloader.Adaptive
         {
             if (args.ErrorCode == ErrorCode.InvalidResponse && totalDownloadedBytes > 0)
             {
-                Failed?.Invoke(this, new DownloadFailedEventArgs(ErrorCode.SessionExpired));
+                Failed?.Invoke(this, new DownloadFailedEventArgs(ErrorCode.SessionExpired, args.Detail));
             }
             else
             {

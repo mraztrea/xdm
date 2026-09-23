@@ -143,7 +143,14 @@ namespace XDM.Core.Clients.Http
             catch (HttpRequestException we)
             {
                 Log.Debug(we, we.Message);
-                response?.Dispose();
+                if (response == null)
+                {
+                    //no response at all (connection refused, DNS failure, TLS error).
+                    //Report the reason instead of returning a response without data, which used to
+                    //surface as a NullReferenceException in the caller.
+                    throw;
+                }
+                response.Dispose();
             }
             session.Response = response;
             return new HttpResponse { Session = session };

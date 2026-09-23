@@ -161,7 +161,7 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                  catch (Exception e)
                  {
                      Log.Debug(e, e.Message);
-                     base.OnFailed(e is DownloadException ex ? ex.ErrorCode : ErrorCode.Generic);
+                     base.OnFailed(e is DownloadException ex ? ex.ErrorCode : ErrorCode.Generic, e.Message);
                  }
              }).Start();
         }
@@ -431,7 +431,7 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                         {
                             throw new AssembleFailedException(
                                 res == MediaProcessingResult.AppNotFound ? ErrorCode.FFmpegNotFound :
-                                ErrorCode.FFmpegError); //TODO: Add more info about error
+                                ErrorCode.FFmpegError, mediaProcessor.LastError);
                         }
 
                         if (Config.Instance.FetchServerTimeStamp)
@@ -446,7 +446,7 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                     }
                     else
                     {
-                        throw new AssembleFailedException(ErrorCode.Generic); //TODO: Add more info about error
+                        throw new AssembleFailedException(ErrorCode.Generic, "Media processor is not available");
                     }
 
                     if (this.cancelFlag.IsCancellationRequested) return;
@@ -462,8 +462,9 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                 catch (Exception ex)
                 {
                     Log.Debug(ex, "error");
-                    var aex = new AssembleFailedException(ex is DownloadException de ? de.ErrorCode : ErrorCode.Generic);
-                    throw aex;
+                    throw ex is DownloadException de ?
+                        new AssembleFailedException(de.ErrorCode, de.Message, de) :
+                        new AssembleFailedException(ErrorCode.Generic, ex.Message, ex);
                 }
                 finally
                 {

@@ -75,11 +75,13 @@ namespace XDM.Core.MediaProcessor
 
         private MediaProcessingResult ProcessMedia(string[] args, CancelFlag cancellationToken)
         {
+            this.LastError = null;
             try
             {
 
                 var duration = 0L;
                 var time = 0L;
+                string? lastLogLine = null;
                 var file = FindFFmpegBinary();
 
                 Log.Debug($"{file} {string.Join(" ", args)}");
@@ -101,6 +103,7 @@ namespace XDM.Core.MediaProcessor
                 pb.Arguments = XDM.Compatibility.ProcessStartInfoHelper.ArgumentListToArgsString(args);
 #endif
                 pb.RedirectStandardOutput = true;
+                pb.RedirectStandardError = true;
 
                 using var proc = Process.Start(pb);
                 if (proc == null)
@@ -146,13 +149,15 @@ namespace XDM.Core.MediaProcessor
                 proc.ErrorDataReceived += (a, b) =>
                 {
                     var line = b.Data;
-                    if (line != null)
+                    if (!string.IsNullOrEmpty(line))
                     {
                         Log.Debug(line);
+                        lastLogLine = line;
                     }
                 };
 
                 proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
 
                 while (true)
                 {
@@ -173,6 +178,8 @@ namespace XDM.Core.MediaProcessor
                     return MediaProcessingResult.Success;
                 }
                 Log.Debug("FFmpeg exitcode: " + proc.ExitCode);
+                this.LastError = "ffmpeg exited with code " + proc.ExitCode +
+                    (string.IsNullOrEmpty(lastLogLine) ? "" : ": " + lastLogLine);
                 return MediaProcessingResult.Failed;
             }
             catch (OperationCanceledException ex)
@@ -188,6 +195,8 @@ namespace XDM.Core.MediaProcessor
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
+                Log.Debug(ex, "FFmpeg failed to run");
+                this.LastError = ex.Message;
                 return MediaProcessingResult.Failed;
             }
         }

@@ -460,7 +460,8 @@ namespace XDM.Core
         {
             lock (this)
             {
-                Log.Debug("Download failed: " + args.ErrorCode);
+                Log.Debug("Download failed: " + args.ErrorCode +
+                    (string.IsNullOrEmpty(args.Detail) ? "" : " :: " + args.Detail));
                 var http = source as IBaseDownloader;
                 DetachEventHandlers(http);
                 liveDownloads.Remove(http.Id);
@@ -468,7 +469,11 @@ namespace XDM.Core
                 if (activeProgressWindows.ContainsKey(http.Id))
                 {
                     var prgWin = activeProgressWindows[http.Id];
-                    prgWin.DownloadFailed(new ErrorDetails { Message = ErrorMessages.GetLocalizedErrorMessage(args.ErrorCode) });
+                    prgWin.DownloadFailed(new ErrorDetails
+                    {
+                        Code = (int)args.ErrorCode,
+                        Message = ErrorMessages.GetLocalizedErrorMessage(args.ErrorCode, args.Detail)
+                    });
                 }
 
                 Helpers.RunGC();

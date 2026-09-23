@@ -16,12 +16,12 @@ namespace XDM.Core
             this.ErrorCode = errorCode;
         }
 
-        public DownloadException(ErrorCode errorCode, string message) : base(message)
+        public DownloadException(ErrorCode errorCode, string? message) : base(message)
         {
             this.ErrorCode = errorCode;
         }
 
-        public DownloadException(ErrorCode errorCode, string message, Exception innerException) : base(message, innerException)
+        public DownloadException(ErrorCode errorCode, string? message, Exception? innerException) : base(message, innerException)
         {
             this.ErrorCode = errorCode;
         }
@@ -29,9 +29,9 @@ namespace XDM.Core
 
     public class NonRetriableException : DownloadException
     {
-        public NonRetriableException(ErrorCode errorCode, string message) : base(errorCode, message) { }
+        public NonRetriableException(ErrorCode errorCode, string? message) : base(errorCode, message) { }
 
-        public NonRetriableException(ErrorCode errorCode, string message, Exception innerException) :
+        public NonRetriableException(ErrorCode errorCode, string? message, Exception? innerException) :
             base(errorCode, message, innerException)
         { }
     }
@@ -39,7 +39,11 @@ namespace XDM.Core
     public class AssembleFailedException : DownloadException
     {
         public AssembleFailedException(ErrorCode errorCode) : base(errorCode) { }
-        public AssembleFailedException(ErrorCode errorCode, Exception e) : base(errorCode, e.Message) { }
+        public AssembleFailedException(ErrorCode errorCode, string? message) : base(errorCode, message) { }
+        public AssembleFailedException(ErrorCode errorCode, Exception e) : base(errorCode, e.Message, e) { }
+        public AssembleFailedException(ErrorCode errorCode, string? message, Exception? e) :
+            base(errorCode, message, e)
+        { }
     }
 
     public class HttpException : Exception

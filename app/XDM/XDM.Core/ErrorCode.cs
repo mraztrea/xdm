@@ -10,6 +10,7 @@ namespace XDM.Core
     {
         None, Generic, NonResumable, AssemblingFailed,
         MaxRetryFailed, InvalidResponse, FFmpegNotFound,
-        FFmpegError, DiskError, SessionExpired
+        FFmpegError, DiskError, SessionExpired,
+        TargetFileCreateFailed, TargetFileWriteFailed
     }
 }

@@ -145,7 +145,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                 catch (Exception e)
                 {
                     Log.Debug(e, e.Message);
-                    base.OnFailed(e is DownloadException de ? de.ErrorCode : ErrorCode.Generic);
+                    base.OnFailed(e is DownloadException de ? de.ErrorCode : ErrorCode.Generic, e.Message);
                 }
             }).Start();
         }
@@ -349,7 +349,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
 
                     var outFile = state!.ConvertToMp3 ? Path.Combine(this.GetState().TempDir!, Guid.NewGuid().ToString())
                         : this.TargetFile;
-                    using var outfs = new FileStream(outFile!, FileMode.Create, FileAccess.Write);
+                    using var outfs = FileHelper.CreateTargetFile(outFile!);
                     try
                     {
                         foreach (var pc in pieces)
@@ -373,7 +373,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                                     catch (IOException ioe)
                                     {
                                         Log.Debug(ioe, "AssemblePieces");
-                                        throw new AssembleFailedException(ErrorCode.DiskError, ioe);
+                                        throw new AssembleFailedException(ErrorCode.TargetFileWriteFailed, ioe);
                                     }
                                     totalBytes += x;
                                 }
@@ -396,7 +396,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                                     catch (IOException ioe)
                                     {
                                         Log.Debug(ioe, "AssemblePieces");
-                                        throw new AssembleFailedException(ErrorCode.DiskError, ioe);
+                                        throw new AssembleFailedException(ErrorCode.TargetFileWriteFailed, ioe);
                                     }
                                     len -= x;
                                     totalBytes += x;
@@ -425,7 +425,7 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                                 {
                                     throw new AssembleFailedException(
                                         res == MediaProcessingResult.AppNotFound ? ErrorCode.FFmpegNotFound :
-                                        ErrorCode.FFmpegError); //TODO: Add more info about error
+                                        ErrorCode.FFmpegError, mediaProcessor.LastError);
                                 }
 
                                 if (Config.Instance.FetchServerTimeStamp)
@@ -440,7 +440,8 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                             }
                             else
                             {
-                                throw new AssembleFailedException(ErrorCode.Generic); //TODO: Add more info about error
+                                throw new AssembleFailedException(ErrorCode.Generic,
+                                    "Media processor is not available");
                             }
                         }
                     }
@@ -473,7 +474,9 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
                 catch (Exception ex)
                 {
                     Log.Debug(ex, "Error in AssemblePieces");
-                    throw new AssembleFailedException(ex is DownloadException de ? de.ErrorCode : ErrorCode.Generic);
+                    throw ex is DownloadException de ?
+                        new AssembleFailedException(de.ErrorCode, de.Message, de) :
+                        new AssembleFailedException(ErrorCode.Generic, ex.Message, ex);
                 }
             }
             finally

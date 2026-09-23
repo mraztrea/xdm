@@ -297,6 +297,11 @@ namespace XDM.GtkUI.Dialogs.ProgressWindow
             TxtUrl.Ellipsize = Pango.EllipsizeMode.End;
             TxtFileName.Ellipsize = Pango.EllipsizeMode.End;
 
+            //error messages carry the reason reported by the failing stage, so keep them readable
+            TxtStatus.LineWrap = true;
+            TxtStatus.LineWrapMode = Pango.WrapMode.WordChar;
+            TxtStatus.MaxWidthChars = 60;
+
             TxtSpeedLimit.Clicked += TxtSpeedLimit_Clicked;
 
             GtkHelper.AttachSafeDispose(this);

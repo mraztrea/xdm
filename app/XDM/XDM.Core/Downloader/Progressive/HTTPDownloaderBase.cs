@@ -221,7 +221,7 @@ namespace XDM.Core.Downloader.Progressive
             return null;
         }
 
-        public void PieceDownloadFailed(string pieceId, ErrorCode error)
+        public void PieceDownloadFailed(string pieceId, ErrorCode error, string? detail)
         {
             if (this.cancelFlag.IsCancellationRequested) return;
             try
@@ -231,7 +231,7 @@ namespace XDM.Core.Downloader.Progressive
                 this.SaveChunkState();
                 if (grabberDict.Count == 0)
                 {
-                    OnFailed(error);
+                    OnFailed(error, detail);
                 }
             }
             finally
@@ -493,15 +493,15 @@ namespace XDM.Core.Downloader.Progressive
             this.Probed?.Invoke(this, EventArgs.Empty);
         }
 
-        protected virtual void OnFailed(ErrorCode error)
+        protected virtual void OnFailed(ErrorCode error, string? detail = null)
         {
             if (error == ErrorCode.InvalidResponse && totalDownloadedBytes > 0)
             {
-                this.Failed?.Invoke(this, new DownloadFailedEventArgs(ErrorCode.SessionExpired));
+                this.Failed?.Invoke(this, new DownloadFailedEventArgs(ErrorCode.SessionExpired, detail));
             }
             else
             {
-                this.Failed?.Invoke(this, new DownloadFailedEventArgs(error));
+                this.Failed?.Invoke(this, new DownloadFailedEventArgs(error, detail));
             }
             Cleanup();
         }

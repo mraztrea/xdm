@@ -8,23 +8,25 @@ namespace XDM.Core.Downloader.Adaptive
         private List<HttpChunkDownloader> downloaders = new();
         private CancelFlag _cancellationToken;
         public ErrorCode Error { get; private set; } = ErrorCode.None;
+        public string? ErrorDetail { get; private set; }
 
         public CancelRequestor(CancelFlag cancellationToken)
         {
             _cancellationToken = cancellationToken;
         }
 
-        public void CancelWithFatal(ErrorCode error)
+        public void CancelWithFatal(ErrorCode error, string? detail = null)
         {
             CancelAll();
             this.Error = error;
+            this.ErrorDetail = detail;
             if (!_cancellationToken.IsCancellationRequested)
             {
                 _cancellationToken.Cancel();
             }
         }
 
-        public void NotifyTransientFailure()
+        public void NotifyTransientFailure(string? detail = null)
         {
             lock (this)
             {
@@ -35,7 +37,7 @@ namespace XDM.Core.Downloader.Adaptive
                         return;
                     }
                 }
-                CancelWithFatal(ErrorCode.Generic);
+                CancelWithFatal(ErrorCode.MaxRetryFailed, detail);
             }
         }
 

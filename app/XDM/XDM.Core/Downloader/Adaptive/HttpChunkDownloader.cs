@@ -119,7 +119,8 @@ namespace XDM.Core.Downloader.Adaptive
                         if (response.StatusCode != HttpStatusCode.PartialContent && (response.StatusCode != HttpStatusCode.OK && _chunk.Downloaded + _chunk.Offset > 0))
                         {
                             //throw new Exception(response.ReasonPhrase);
-                            _cancelRequster.CancelWithFatal(ErrorCode.InvalidResponse);
+                            _cancelRequster.CancelWithFatal(ErrorCode.InvalidResponse,
+                                "Unexpected HTTP status: " + response.StatusCode);
                             return;
                         }
 
@@ -165,7 +166,7 @@ namespace XDM.Core.Downloader.Adaptive
                         Log.Debug(e, "Error in DownloadAsync");
                         if (e is DirectoryNotFoundException || e is IOException)
                         {
-                            _cancelRequster.CancelWithFatal(ErrorCode.DiskError);
+                            _cancelRequster.CancelWithFatal(ErrorCode.DiskError, e.Message);
                             return;
                         }
                         TransientFailure = true;
@@ -173,7 +174,7 @@ namespace XDM.Core.Downloader.Adaptive
                         if (retryCount > Config.Instance.MaxRetry)
                         {
                             retryCount = 0;
-                            _cancelRequster.NotifyTransientFailure();
+                            _cancelRequster.NotifyTransientFailure(e.Message);
                         }
                         else
                         {

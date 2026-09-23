@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using System.IO;
 using XDM.Core;
 using TraceLog;
@@ -71,6 +72,7 @@ namespace XDM.Core.Downloader.Progressive
             {
                 if (this.pieceId == null || this.callback == null) return;
                 var piece = this.callback.GetPiece(this.pieceId);
+                Exception? lastError = null;
                 while (!this.CancellationToken.IsCancellationRequested)
                 {
                     var connectPhase = true;
@@ -108,12 +110,15 @@ namespace XDM.Core.Downloader.Progressive
                     {
                         if (e is KeyNotFoundException || this.CancellationToken.IsCancellationRequested) return;
                         if (e is AssembleFailedException || e is NonRetriableException || e is OperationCanceledException) throw;
+                        lastError = e;
                         Log.Debug(e, "Error in PieceGrabber inner block - swallowing error - isCancelled: " + this.cancellationTokenSource.IsCancellationRequested);
                     }
                     timesRetried++;
                     if (timesRetried > Config.Instance.MaxRetry)
                     {
-                        throw new DownloadException(ErrorCode.MaxRetryFailed, "Max retry exceeded");
+                        throw lastError == null ?
+                            new DownloadException(ErrorCode.MaxRetryFailed, "Max retry exceeded") :
+                            new DownloadException(ErrorCode.MaxRetryFailed, lastError.Message, lastError);
                     }
                     if (connectPhase)
                     {
@@ -133,8 +138,16 @@ namespace XDM.Core.Downloader.Progressive
                 Log.Debug(e, "Error in PieceGrabber outer block");
                 if (this.pieceId != null)
                 {
-                    this.callback?.PieceDownloadFailed(this.pieceId,
-                        e is DownloadException de ? de.ErrorCode : ErrorCode.Generic);
+                    if (e is TaskCanceledException)
+                    {
+                        this.callback?.PieceDownloadFailed(this.pieceId, ErrorCode.MaxRetryFailed,
+                            $"server did not respond within {Config.Instance.NetworkTimeout}s");
+                    }
+                    else
+                    {
+                        this.callback?.PieceDownloadFailed(this.pieceId,
+                            e is DownloadException de ? de.ErrorCode : ErrorCode.Generic, e.Message);
+                    }
                 }
             }
         }

@@ -20,6 +20,24 @@ namespace XDM.Core.Util
             return string.Join("_", file.Split(Path.GetInvalidFileNameChars()));
         }
 
+        /// <summary>
+        /// Creates the file that receives the assembled download. Creation failures
+        /// (missing folder, no permission, read-only or full disk) are reported as
+        /// <see cref="ErrorCode.TargetFileCreateFailed"/> instead of a generic error.
+        /// </summary>
+        public static FileStream CreateTargetFile(string path)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.Create, FileAccess.Write);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "CreateTargetFile :: " + path);
+                throw new AssembleFailedException(ErrorCode.TargetFileCreateFailed, ex.Message, ex);
+            }
+        }
+
         public static string GetDownloadFolderByFileName(string file)
         {
             try
