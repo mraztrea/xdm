@@ -136,18 +136,27 @@ namespace XDM.Core.Downloader.Progressive
                     return;
                 }
                 Log.Debug(e, "Error in PieceGrabber outer block");
-                if (this.pieceId != null)
+                //Stop() clears these fields from another thread
+                var id = this.pieceId;
+                var cb = this.callback;
+                if (id == null || cb == null) return;
+                try
                 {
                     if (e is TaskCanceledException)
                     {
-                        this.callback?.PieceDownloadFailed(this.pieceId, ErrorCode.MaxRetryFailed,
+                        cb.PieceDownloadFailed(id, ErrorCode.MaxRetryFailed,
                             $"server did not respond within {Config.Instance.NetworkTimeout}s");
                     }
                     else
                     {
-                        this.callback?.PieceDownloadFailed(this.pieceId,
+                        cb.PieceDownloadFailed(id,
                             e is DownloadException de ? de.ErrorCode : ErrorCode.Generic, e.Message);
                     }
+                }
+                catch (Exception ex)
+                {
+                    //an exception escaping this thread would terminate the whole application
+                    Log.Debug(ex, "Error reporting piece failure");
                 }
             }
         }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -9,6 +10,7 @@ namespace XDM.Core.HttpServer
     public class NanoServer
     {
         private readonly TcpListener listener;
+        private volatile bool stopped;
         public event EventHandler<RequestContextEventArgs>? RequestReceived;
 
         public NanoServer(int port) : this(IPAddress.Any, port) { }
@@ -21,15 +23,27 @@ namespace XDM.Core.HttpServer
         public void Start()
         {
             listener.Start();
-            while (true)
+            while (!stopped)
             {
-                var tcp = listener.AcceptTcpClient();
+                TcpClient tcp;
+                try
+                {
+                    tcp = listener.AcceptTcpClient();
+                }
+                catch (Exception ex) when (!stopped && (ex is SocketException || ex is IOException))
+                {
+                    //a failed accept (aborted connection, out of descriptors) must not end browser integration
+                    Log.Debug(ex, "AcceptTcpClient");
+                    Thread.Sleep(100);
+                    continue;
+                }
                 ProcessRequest(tcp);
             }
         }
 
         public void Stop()
         {
+            stopped = true;
             try
             {
                 this.listener.Stop();

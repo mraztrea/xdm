@@ -121,9 +121,22 @@ namespace XDM.Core.Downloader.Adaptive
         {
             new Thread(() =>
             {
-                Directory.CreateDirectory(_state.TempDirectory);
-                ticksAtDownloadStartOrResume = Helpers.TickCount();
-                SaveState();
+                try
+                {
+                    Directory.CreateDirectory(_state.TempDirectory);
+                    ticksAtDownloadStartOrResume = Helpers.TickCount();
+                    SaveState();
+                }
+                catch (Exception ex)
+                {
+                    //an exception escaping this thread would terminate the whole application
+                    Log.Debug(ex, "Error preparing download");
+                    if (start)
+                    {
+                        OnFailed(new DownloadFailedEventArgs(ErrorCode.Generic, ex.Message));
+                    }
+                    return;
+                }
                 if (start)
                 {
                     Started?.Invoke(this, EventArgs.Empty);
@@ -420,7 +433,8 @@ namespace XDM.Core.Downloader.Adaptive
                     lastProgress = progressResult.Progress;
                     if (prgDiff > 0)
                     {
-                        var eta = (ticksElapsed * (100 - progressResult.Progress) / 1000 * prgDiff);
+                        //ticksElapsed ms were needed for prgDiff percent
+                        var eta = ticksElapsed * (100 - progressResult.Progress) / (1000 * prgDiff);
                         progressResult.Eta = eta;
                     }
                     var timeDiff = tick - ticksAtDownloadStartOrResume;
@@ -539,6 +553,8 @@ namespace XDM.Core.Downloader.Adaptive
             {
                 Directory.CreateDirectory(this.TargetDir);
             }
+
+            this.TargetFileName = FileHelper.FitFileNameToFolder(this.TargetFileName, this.TargetDir);
 
             if (Config.Instance.FileConflictResolution == FileConflictResolution.AutoRename)
             {
