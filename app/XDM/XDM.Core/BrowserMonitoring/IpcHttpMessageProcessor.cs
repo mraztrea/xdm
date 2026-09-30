@@ -39,7 +39,9 @@ namespace XDM.Core.BrowserMonitoring
                 catch (Exception ex)
                 {
                     Log.Debug(ex.ToString());
-                    ApplicationContext.Application.ShowMessageBox(null, TextResource.GetText("MSG_ALREADY_RUNNING"));
+                    //dialogs must be created on the UI thread (GTK is not thread safe)
+                    ApplicationContext.Application.RunOnUiThread(() =>
+                        ApplicationContext.Application.ShowMessageBox(null, TextResource.GetText("MSG_ALREADY_RUNNING")));
                 }
             }).Start();
         }

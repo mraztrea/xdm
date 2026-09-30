@@ -41,6 +41,11 @@ namespace Translations
                     continue;
                 }
                 var index = line.IndexOf('=');
+                if (index <= 0)
+                {
+                    //a malformed line must not break loading the whole language
+                    continue;
+                }
                 var key = line.Substring(0, index);
                 var val = line.Substring(index + 1);
                 texts[key] = val;

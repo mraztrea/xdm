@@ -117,9 +117,21 @@ namespace XDM.Core.Downloader.Progressive
             {
                 this.cancelFlag.Cancel();
                 this.speedLimiter.WakeIfSleeping();
-                foreach (var pc in grabberDict.Keys)
+                //snapshot under the lock: piece threads remove themselves from grabberDict concurrently,
+                //and enumerating it directly could throw and leave some pieces running
+                List<PieceGrabber> grabbers;
+                rwLock.EnterReadLock();
+                try
                 {
-                    grabberDict[pc].Stop();
+                    grabbers = grabberDict.Values.ToList();
+                }
+                finally
+                {
+                    rwLock.ExitReadLock();
+                }
+                foreach (var grabber in grabbers)
+                {
+                    grabber.Stop();
                 }
             }
             catch (Exception ex)
