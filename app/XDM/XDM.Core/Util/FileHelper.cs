@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -136,16 +137,97 @@ namespace XDM.Core.Util
 
         public static string GetUniqueFileName(string file, string folder)
         {
-            var path = Path.Combine(folder, file);
-            var name = Path.GetFileNameWithoutExtension(file);
-            var ext = Path.GetExtension(file);
+            SplitFileName(file, out var name, out var ext);
+            var candidate = FitFileName(name, ext, folder);
             var count = 0;
-            while (File.Exists(path))
+            while (File.Exists(Path.Combine(folder, candidate)))
             {
                 count++;
-                path = Path.Combine(folder, name + "_" + count + ext);
+                candidate = FitFileName(name, "_" + count + ext, folder);
             }
-            return count == 0 ? file : name + "_" + count + ext;
+            return candidate;
+        }
+
+        /*
+         * Longest file name we produce. The file system limit is 255 (UTF-8 bytes on
+         * Linux/macOS, UTF-16 chars on Windows); the headroom covers the "_N" suffix
+         * added on conflict and the "1_"/"2_" + container extension temp files.
+         */
+        private const int MaxFileNameLength = 240;
+        private const int MaxPathLengthWindows = 259;
+        private const int MaxPathLengthUnix = 4095;
+        private const int MaxExtensionLength = 16;
+        private const int MinStemLength = 8;
+
+        /// <summary>
+        /// Shortens <paramref name="file"/> (keeping its extension) so that it and
+        /// <paramref name="folder"/>/<paramref name="file"/> stay within the file system
+        /// limits. Long titles, especially non-ASCII ones, otherwise make the output
+        /// file impossible to create.
+        /// </summary>
+        public static string FitFileNameToFolder(string file, string folder)
+        {
+            if (string.IsNullOrEmpty(file)) return file;
+            SplitFileName(file, out var name, out var ext);
+            return FitFileName(name, ext, folder);
+        }
+
+        private static void SplitFileName(string file, out string name, out string ext)
+        {
+            ext = Path.GetExtension(file) ?? string.Empty;
+            if (ext.Length > MaxExtensionLength || ext.Contains(" "))
+            {
+                //not a real extension, e.g. "Part 1. Some long title"
+                ext = string.Empty;
+            }
+            name = file.Substring(0, file.Length - ext.Length);
+        }
+
+        private static string FitFileName(string name, string tail, string folder)
+        {
+            var isWindows = Environment.OSVersion.Platform == PlatformID.Win32NT;
+            var maxPath = isWindows ? MaxPathLengthWindows : MaxPathLengthUnix;
+            var folderLength = string.IsNullOrEmpty(folder) ? 0 :
+                MeasureFileNameLength(Path.Combine(folder, "x"), isWindows) - 1;
+            var limit = Math.Min(MaxFileNameLength, maxPath - folderLength);
+            var tailLength = MeasureFileNameLength(tail, isWindows);
+            if (limit - tailLength < MinStemLength)
+            {
+                //the folder alone is too long, shortening the name cannot help much
+                limit = MaxFileNameLength;
+            }
+
+            var file = name + tail;
+            if (MeasureFileNameLength(file, isWindows) <= limit)
+            {
+                return file;
+            }
+
+            var budget = Math.Max(limit - tailLength, MinStemLength);
+            var stem = new StringBuilder();
+            var used = 0;
+            var elements = StringInfo.GetTextElementEnumerator(name);
+            while (elements.MoveNext())
+            {
+                var element = elements.GetTextElement();
+                var length = MeasureFileNameLength(element, isWindows);
+                if (used + length > budget) break;
+                stem.Append(element);
+                used += length;
+            }
+            var shortName = stem.ToString().TrimEnd(' ', '.');
+            if (shortName.Length == 0)
+            {
+                shortName = "download";
+            }
+            var result = shortName + tail;
+            Log.Debug($"File name too long, shortened: '{file}' -> '{result}'");
+            return result;
+        }
+
+        private static int MeasureFileNameLength(string text, bool isWindows)
+        {
+            return isWindows ? text.Length : Encoding.UTF8.GetByteCount(text);
         }
 
         public static string GetFileNameFromQuote(string text)

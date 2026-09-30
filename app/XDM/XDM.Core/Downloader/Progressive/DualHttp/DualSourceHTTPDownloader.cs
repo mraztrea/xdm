@@ -375,6 +375,8 @@ namespace XDM.Core.Downloader.Progressive.DualHttp
                         Directory.CreateDirectory(this.TargetDir);
                     }
 
+                    this.TargetFileName = FileHelper.FitFileNameToFolder(this.TargetFileName, this.TargetDir);
+
                     if (Config.Instance.FileConflictResolution == FileConflictResolution.AutoRename)
                     {
                         this.TargetFileName = FileHelper.GetUniqueFileName(this.TargetFileName, this.TargetDir);

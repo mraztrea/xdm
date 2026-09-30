@@ -540,6 +540,8 @@ namespace XDM.Core.Downloader.Adaptive
                 Directory.CreateDirectory(this.TargetDir);
             }
 
+            this.TargetFileName = FileHelper.FitFileNameToFolder(this.TargetFileName, this.TargetDir);
+
             if (Config.Instance.FileConflictResolution == FileConflictResolution.AutoRename)
             {
                 this.TargetFileName = FileHelper.GetUniqueFileName(this.TargetFileName, this.TargetDir);
