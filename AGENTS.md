@@ -51,7 +51,7 @@ XDM_DEBUG_MODE=1 app/XDM/XDM.Gtk.UI/bin/Release/net6.0/xdm-app --background
 
 ## 4. Quy trình spec-driven (SDD)
 
-- `.specify/feature.json` → `feature_directory` trỏ tới feature đang làm (hiện tại: `specs/001-background-tray-icon`).
+- `.specify/feature.json` → `feature_directory` trỏ tới feature đang làm (hiện tại: `specs/002-ts-to-mp4-remux`).
 - Mỗi feature: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `tasks.md`, `contracts/`, `checklists/`. Template ở `.specify/templates/`. Repo **không** có `.specify/memory/constitution.md`.
 - Trước khi sửa code: đọc `spec.md` + `plan.md` + `tasks.md` của feature liên quan; cập nhật `tasks.md` khi hoàn thành.
 - Verify theo `quickstart.md` (thủ công trên desktop thật) — **không** chạy cả test suite cho mỗi thay đổi.
