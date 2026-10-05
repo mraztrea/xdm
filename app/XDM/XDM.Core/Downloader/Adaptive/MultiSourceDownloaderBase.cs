@@ -851,5 +851,10 @@ namespace XDM.Core.Downloader.Adaptive
         public AuthenticationInfo? Authentication;
         public ProxyInfo? Proxy;
         public int SpeedLimit;
+        public bool ConvertTsToMp4;
+        public string PendingRemuxTsPath = string.Empty;
+        public string PendingRemuxTsStamp = string.Empty;
+        public string PendingRemuxMp4Path = string.Empty;
+        public string PendingRemuxMp4Stamp = string.Empty;
     }
 }

@@ -271,3 +271,6 @@ MSG_EXT_PIN=Please pin the extension in browser toolbar for a better user experi
 MSG_EXT_INSTALL_FAIL=The extension was not installed successfully, please click on the Help button to find out how to fix it
 MSG_COPY=Copy
 MSG_QUIT_ACTIVE_DOWNLOADS=Downloads are in progress. Exit XDM and stop them?
+LBL_CONVERT_TO_MP4=Convert to MP4
+MSG_TS_TO_MP4_FAILED=The download finished, but XDM could not convert it to MP4. The original .ts file was kept.
+MSG_TS_TO_MP4_CLEANUP_FAILED=XDM could not delete the following file.

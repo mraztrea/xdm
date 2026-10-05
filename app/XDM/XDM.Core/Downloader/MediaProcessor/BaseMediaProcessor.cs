@@ -11,6 +11,12 @@ namespace XDM.Core.MediaProcessor
         public abstract MediaProcessingResult MergeHLSAudioVideStream(string segmentListFile, string outfile, CancelFlag cancellationToken, out long outFileSize);
         public abstract MediaProcessingResult ConvertToMp3Audio(string segmentListFile, string outfile, CancelFlag cancellationToken, out long outFileSize);
 
+        public abstract MediaProcessingResult RemuxTsToMp4(string infile, string outfile,
+            CancelFlag cancellationToken, out long outFileSize);
+
+        public abstract MediaProcessingResult ProbeTs(string infile, bool hasTsSignature,
+            CancelFlag cancellationToken, out bool isTsVideo);
+
         /// <summary>
         /// Reason reported by the backend for the last failed operation (e.g. ffmpeg exit code and
         /// the last ffmpeg log line). Null when the last operation succeeded or was cancelled.

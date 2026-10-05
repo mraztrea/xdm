@@ -151,6 +151,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Downloader\IBaseDownloader.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Downloader\MediaProcessor\BaseMediaProcessor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Downloader\MediaProcessor\FFmpegMediaProcessor.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Downloader\MediaProcessor\TsToMp4Remuxer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Downloader\ProbeResult.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Downloader\Progressive\DualHttp\DualSourceHTTPDownloader.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Downloader\Progressive\DualHttp\DualSourceHTTPDownloadInfo.cs" />

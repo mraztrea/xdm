@@ -54,6 +54,54 @@ namespace XDM.Core.MediaProcessor
             return ret;
         }
 
+        public override MediaProcessingResult RemuxTsToMp4(string infile, string outfile,
+            CancelFlag cancellationToken, out long outFileSize)
+        {
+            throw new NotImplementedException("FFmpegMediaProcessor.RemuxTsToMp4 is not implemented yet (T008).");
+        }
+
+        public override MediaProcessingResult ProbeTs(string infile, bool hasTsSignature,
+            CancelFlag cancellationToken, out bool isTsVideo)
+        {
+            throw new NotImplementedException("FFmpegMediaProcessor.ProbeTs is not implemented yet (T008).");
+        }
+
+        /// <summary>
+        /// Chạy một lượt probe TS bằng FFmpeg và trả về các dòng stderr cùng exit code.
+        /// Seam tối thiểu cho T008: <see cref="ProbeTs"/> gọi seam này cho lượt auto-probe rồi
+        /// lượt forced (khi hint false và chưa xác nhận được video MPEGTS), kiểm tra cancellation
+        /// trước lượt fallback. Lớp con giả trong test T005 override seam này để kiểm chứng
+        /// orchestration mà không cần FFmpeg thật.
+        /// Trả về <see cref="MediaProcessingResult.AppNotFound"/> khi thiếu binary FFmpeg,
+        /// <see cref="MediaProcessingResult.Failed"/> khi không chạy được tiến trình, và
+        /// <see cref="MediaProcessingResult.Success"/> khi tiến trình đã chạy xong bất kể exit code
+        /// (exit code thật nằm ở <paramref name="exitCode"/>).
+        /// </summary>
+        protected virtual MediaProcessingResult RunTsProbe(string[] args, CancelFlag cancellationToken,
+            out List<string> stderrLines, out int exitCode)
+        {
+            throw new NotImplementedException("FFmpegMediaProcessor.RunTsProbe is not implemented yet (T008).");
+        }
+
+        /// <summary>
+        /// Bộ dựng tham số probe/remux và parser output probe. Chữ ký được chốt ở đây để test T005
+        /// nhắm vào hành vi; phần thân sẽ được T008 triển khai.
+        /// </summary>
+        internal static string[] CreateRemuxArgs(string infile, string outfile)
+        {
+            throw new NotImplementedException("FFmpegMediaProcessor.CreateRemuxArgs is not implemented yet (T008).");
+        }
+
+        internal static string[] CreateProbeTsArgs(string infile, bool forceMpegTs)
+        {
+            throw new NotImplementedException("FFmpegMediaProcessor.CreateProbeTsArgs is not implemented yet (T008).");
+        }
+
+        internal static bool ProbeOutputConfirmsTsVideo(IEnumerable<string> stderrLines)
+        {
+            throw new NotImplementedException("FFmpegMediaProcessor.ProbeOutputConfirmsTsVideo is not implemented yet (T008).");
+        }
+
         private static string[] CreateMergeArgs(string file1, string file2, string outfile)
         {
             var args = new string[] { "-i", file1, "-i", file2, "-acodec", "copy", "-vcodec", "copy",

@@ -541,5 +541,10 @@ namespace XDM.Core.Downloader.Progressive.SingleHttp
         public Dictionary<string, List<string>> Headers;
         public string Cookies;
         public bool ConvertToMp3;
+        public bool ConvertTsToMp4;
+        public string PendingRemuxTsPath = string.Empty;
+        public string PendingRemuxTsStamp = string.Empty;
+        public string PendingRemuxMp4Path = string.Empty;
+        public string PendingRemuxMp4Stamp = string.Empty;
     }
 }

@@ -372,3 +372,8 @@ app/XDM/firefox-amo/xdm-v8-browser-helper.zip
 
 # gói cài đặt sinh bởi build-rpm.sh / build.sh
 dist/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
